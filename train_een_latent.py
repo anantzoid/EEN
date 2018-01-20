@@ -53,7 +53,7 @@ print("Saving to " + opt.model_filename)
 ### train ##
 ############
 def train_epoch(nsteps):
-    total_loss_f, total_loss_g = 0, 0
+    total_loss_f, total_loss_g, total_loss_h = 0, 0, 0
     model.train()
     for iter in range(0, nsteps):
         optimizer.zero_grad()
@@ -61,60 +61,76 @@ def train_epoch(nsteps):
         cond, target, action = dataloader.get_batch('train')
         vcond = Variable(cond)
         vtarget = Variable(target)
+        action = Variable(action)
         # forward
-        pred_f, pred_g, z = model(vcond, vtarget)
+        pred_f, pred_g, z, pred_action = model(vcond, vtarget)
         loss_f = criterion_f(pred_f, vtarget)
         total_loss_f += loss_f.data[0]
-        loss_f.backward(retain_graph=True)
+        #NOTE!!!Temporarly freezing this!!!
+        #loss_f.backward(retain_graph=True)
+
         loss_g = criterion_g(pred_g, vtarget)
         total_loss_g += loss_g.data[0]
+        loss_h = criterion_h(pred_action, action)
+        total_loss_h += loss_h.data[0]
+        loss_h.backward()
+        
         # optimize
         optimizer.step()
-    return total_loss_f / nsteps, total_loss_g / nsteps
+    return total_loss_f / nsteps, total_loss_g / nsteps, total_loss_h / nsteps
 
 
 def test_epoch(nsteps):
-    total_loss_f, total_loss_g = 0, 0
+    total_loss_f, total_loss_g, total_loss_h = 0, 0, 0
     model.eval()
     for iter in range(0, nsteps):
         cond, target, action = dataloader.get_batch('valid')
         vcond = Variable(cond)
         vtarget = Variable(target)
-        pred_f, pred_g, z = model(vcond, vtarget)
+        action = Variable(action)
+        pred_f, pred_g, z, pred_action = model(vcond, vtarget)
         loss_f = criterion_f(pred_f, vtarget)
         total_loss_f += loss_f.data[0]
         loss_g = criterion_g(pred_g, vtarget)
         total_loss_g += loss_g.data[0]
+        loss_h = criterion_h(pred_action, action)
+        total_loss_h += loss_h.data[0]
 
-
-    return total_loss_f / nsteps, total_loss_g / nsteps
+    print("====Action===##")
+    print(action)
+    print("=====Pred Action")
+    print(pred_action)
+    return total_loss_f / nsteps, total_loss_g / nsteps, total_loss_h / nsteps
 
 def train(n_epochs):
     # prepare for saving 
     os.system("mkdir -p " + opt.save_dir)
     # training
     best_valid_loss_f = 1e6
-    train_loss_f, train_loss_g = [], []
-    valid_loss_f, valid_loss_g = [], []
+    train_loss_f, train_loss_g, train_loss_h = [], [], []
+    valid_loss_f, valid_loss_g, valid_loss_h = [], [], []
     for i in range(0, n_epochs):
-        train_loss_epoch_f, train_loss_epoch_g = train_epoch(opt.epoch_size)
+        train_loss_epoch_f, train_loss_epoch_g,  train_loss_epoch_h = train_epoch(opt.epoch_size)
         train_loss_f.append(train_loss_epoch_f)
         train_loss_g.append(train_loss_epoch_g)
-        valid_loss_epoch_f, valid_loss_epoch_g = test_epoch(int(opt.epoch_size / 5))
+        train_loss_h.append(train_loss_epoch_h)
+        valid_loss_epoch_f, valid_loss_epoch_g, valid_loss_epoch_h = test_epoch(int(opt.epoch_size / 5))
         valid_loss_f.append(valid_loss_epoch_f)
         valid_loss_g.append(valid_loss_epoch_g)
+        valid_loss_h.append(valid_loss_epoch_h)
 
         if valid_loss_f[-1] < best_valid_loss_f:
             best_valid_loss_f = valid_loss_f[-1]
             # save the whole model
             model.intype("cpu")
-            torch.save({ 'i': i, 'model': model, 'train_loss_f': train_loss_f, 'train_loss_g': train_loss_g, 'valid_loss_f': valid_loss_f, 'valid_loss_g': valid_loss_g},
+            torch.save({ 'i': i, 'model': model, 'train_loss_f': train_loss_f, 'train_loss_g': train_loss_g, 'valid_loss_f': valid_loss_f, 'valid_loss_g': valid_loss_g,
+                        'train_loss_h': train_loss_h, 'valid_loss_h': valid_loss_h},
                        opt.model_filename + '.model')
             torch.save(optimizer, opt.model_filename + '.optim')
             model.intype("gpu")
 
-        log_string = ('iter: {:d}, train_loss_f: {:0.6f}, train_loss_g: {:0.6f}, valid_loss_f: {:0.6f}, valid_loss_g: {:0.6f}, best_valid_loss_f: {:0.6f}, lr: {:0.5f}').format(
-                      (i+1)*opt.epoch_size, train_loss_f[-1], train_loss_g[-1], valid_loss_f[-1], valid_loss_g[-1], best_valid_loss_f, opt.lrt)
+        log_string = ('iter: {:d}, train_loss_f: {:0.6f}, train_loss_g: {:0.6f}, train_loss_h: {:0.6f}, valid_loss_f: {:0.6f}, valid_loss_g: {:0.6f}, valid_loss_h: {:0.6f}, best_valid_loss_f: {:0.6f}, lr: {:0.5f}').format(
+                      (i+1)*opt.epoch_size, train_loss_f[-1], train_loss_g[-1], train_loss_h[-1], valid_loss_f[-1], valid_loss_g[-1], valid_loss_h[-1], best_valid_loss_f, opt.lrt)
         print(log_string)
         utils.log(opt.model_filename + '.log', log_string)
 
@@ -127,23 +143,30 @@ if __name__ == '__main__':
     opt.n_out = opt.npred * opt.nc
     model = models.LatentResidualModel3Layer(opt)
     # load the baseline model and copy its weights
-    mfile = 'model=baseline-3layer-loss={}-ncond={}-npred={}-nf={}-lrt=0.0005.model'.format(opt.loss, opt.ncond, opt.npred, opt.nfeature)
+    #mfile = 'model=baseline-3layer-loss={}-ncond={}-npred={}-nf={}-lrt=0.0005.model'.format(opt.loss, opt.ncond, opt.npred, opt.nfeature)
+    mfile = 'model=latent-3layer-loss={}-ncond={}-npred={}-nf={}-nz={}-lrt=0.0005.model'.format(opt.loss, opt.ncond, opt.npred, opt.nfeature, opt.n_latent)
     print('initializing with baseline model: {}'.format(opt.save_dir + mfile))
+    #baseline_model = torch.load('/scratch/ag4508/een_data/experiments/driving/model=latent-3layer-loss=l2-ncond=4-npred=4-nf=64-nz=2-lrt=0.0005.model').get('model')
     baseline_model = torch.load(opt.save_dir + mfile).get('model')
     model.g_network_encoder.load_state_dict(baseline_model.f_network_encoder.state_dict())
     model.g_network_decoder.load_state_dict(baseline_model.f_network_decoder.state_dict())
     model.f_network_encoder.load_state_dict(baseline_model.f_network_encoder.state_dict())
     model.f_network_decoder.load_state_dict(baseline_model.f_network_decoder.state_dict())
-
+    model.action_network1.load_state_dict(baseline_model.action_network1.state_dict())
+    model.action_network2.load_state_dict(baseline_model.action_network2.state_dict())
     optimizer = optim.Adam(model.parameters(), opt.lrt)
 
     if opt.loss == 'l1':
         criterion_f = nn.L1Loss().cuda()
         criterion_g = nn.L1Loss().cuda()
+        criterion_h = nn.L1Loss().cuda()
     elif opt.loss == 'l2':
         criterion_f = nn.MSELoss().cuda()
         criterion_g = nn.MSELoss().cuda()
+        criterion_h = nn.MSELoss().cuda()
     print('training...')
+    test_epoch(5)
+    exit()
     utils.log(opt.model_filename + '.log', '[training]')
-    train(500)
+    train(opt.epoch_size)
 

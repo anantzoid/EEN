@@ -58,7 +58,11 @@ class ImageLoader(object):
                 total_frames += len(frames)
             else:
                 print('loading {}'.format(abs_fname_video + '.avi'))
-                vid = imageio.get_reader(abs_fname_video + '.avi',  'ffmpeg')
+                try:
+                    vid = imageio.get_reader(abs_fname_video + '.avi',  'ffmpeg')
+                except:
+                    imageio.plugins.ffmpeg.download()
+                    vid = imageio.get_reader(abs_fname_video + '.avi',  'ffmpeg')
                 frames = []
                 for i, im in enumerate(vid):
                     r_img = misc.imresize(im, (self.h, self.w))

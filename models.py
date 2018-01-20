@@ -77,6 +77,22 @@ class LatentResidualModel3Layer(nn.Module):
             nn.Tanh()
         )
 
+        # action regression network
+
+        self.action_network1 = nn.Sequential(
+            # layer 1
+            nn.Conv2d(64, 32, 4, 2, 1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True)
+        )
+        self.action_network2 = nn.Sequential(
+            nn.Linear(1280, 512),
+            nn.Dropout(0.5),
+            nn.ReLU(True),
+            nn.Linear(512, 8),
+            nn.Tanh()
+        )
+
         # conditional network
         self.f_network_encoder = nn.Sequential(
             # layer 1
@@ -126,7 +142,9 @@ class LatentResidualModel3Layer(nn.Module):
         s = self.f_network_encoder(input)
         h = s + z_emb.view(self.opt.batch_size, self.opt.nfeature, 1, 1).expand(s.size())
         pred_f = self.f_network_decoder(h)
-        return pred_f, g_pred, z
+        pred_action = self.action_network1(h)
+        pred_action = self.action_network2(pred_action.view(self.opt.batch_size, -1)).view(self.opt.batch_size, 4, 2)
+        return pred_f, g_pred, z, pred_action
 
 
 
@@ -152,6 +170,8 @@ class LatentResidualModel3Layer(nn.Module):
             self.g_network_decoder.cuda()
             self.phi_network_conv.cuda()
             self.phi_network_fc.cuda()
+            self.action_network1.cuda()
+            self.action_network2.cuda()
         elif typ == "cpu":
             self.f_network_encoder.cpu()
             self.f_network_decoder.cpu()
@@ -160,6 +180,8 @@ class LatentResidualModel3Layer(nn.Module):
             self.g_network_decoder.cpu()
             self.phi_network_conv.cpu()
             self.phi_network_fc.cpu()
+            self.action_network1.cpu()
+            self.action_network2.cpu()
         else:
             raise ValueError
 
