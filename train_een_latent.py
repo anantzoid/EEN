@@ -50,7 +50,7 @@ opt.model_filename = '{}/model={}-loss={}-ncond={}-npred={}-nf={}-nz={}-lrt={}'.
                     opt.save_dir, opt.model, opt.loss, opt.ncond, opt.npred, opt.nfeature, opt.n_latent, opt.lrt)
 print("Saving to " + opt.model_filename)
 
-log_path = os.path.join('logs', opt.save_dir)
+log_path = os.path.join('logs', opt.save_dir.split('/')[-1])
 tensorboard_logger.configure(log_path)
 
 ############
@@ -65,7 +65,7 @@ def train_epoch(nsteps):
         cond, target, action = dataloader.get_batch('train')
         vcond = Variable(cond)
         vtarget = Variable(target)
-        action = Variable(action[:,:,0].reshape(opt.batch_size, -1))
+        action = Variable(action[:,:,0].contiguous().view(opt.batch_size, -1))
         # forward
         pred_f, pred_g, z, pred_action = model(vcond, vtarget)
         loss_f = criterion_f(pred_f, vtarget)
@@ -90,7 +90,7 @@ def test_epoch(nsteps):
         cond, target, action = dataloader.get_batch('valid')
         vcond = Variable(cond)
         vtarget = Variable(target)
-        action = Variable(action[:,:,0].reshape(opt.batch_size, -1))
+        action = Variable(action[:,:,0].contiguous().view(opt.batch_size, -1))
         pred_f, pred_g, z, pred_action = model(vcond, vtarget)
         loss_f = criterion_f(pred_f, vtarget)
         total_loss_f += loss_f.data[0]
@@ -159,7 +159,7 @@ if __name__ == '__main__':
     model.g_network_decoder.load_state_dict(baseline_model.f_network_decoder.state_dict())
     model.f_network_encoder.load_state_dict(baseline_model.f_network_encoder.state_dict())
     model.f_network_decoder.load_state_dict(baseline_model.f_network_decoder.state_dict())
-    if not opt.load_model:
+    if opt.load_model:
         model.action_network1.load_state_dict(baseline_model.action_network1.state_dict())
         model.action_network2.load_state_dict(baseline_model.action_network2.state_dict())
     optimizer = optim.Adam(model.parameters(), opt.lrt)
