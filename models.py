@@ -89,7 +89,7 @@ class LatentResidualModel3Layer(nn.Module):
             nn.Linear(1280, 512),
             nn.Dropout(0.5),
             nn.ReLU(True),
-            nn.Linear(512, 8),
+            nn.Linear(512, 4),
             nn.Tanh()
         )
 
@@ -143,7 +143,7 @@ class LatentResidualModel3Layer(nn.Module):
         h = s + z_emb.view(self.opt.batch_size, self.opt.nfeature, 1, 1).expand(s.size())
         pred_f = self.f_network_decoder(h)
         pred_action = self.action_network1(h)
-        pred_action = self.action_network2(pred_action.view(self.opt.batch_size, -1)).view(self.opt.batch_size, 4, 2)
+        pred_action = self.action_network2(pred_action.view(self.opt.batch_size, -1)).view(self.opt.batch_size, 4)
         return pred_f, g_pred, z, pred_action
 
 
