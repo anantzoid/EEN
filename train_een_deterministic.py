@@ -29,7 +29,6 @@ torch.set_default_tensor_type('torch.FloatTensor')
 if opt.gpu > 0:
     torch.cuda.set_device(0)
 
-
 # load data and get dataset-specific parameters
 data_config = utils.read_config('config.json').get(opt.task)
 data_config['batchsize'] = opt.batch_size
